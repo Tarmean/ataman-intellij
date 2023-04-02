@@ -11,7 +11,7 @@ sealed class LeaderBinding {
         override val key: KeyStroke,
         override val char: Char,
         override val description: String,
-        val action: String
+        val actions: List<String>
     ) : LeaderBinding()
 
     data class GroupBinding(

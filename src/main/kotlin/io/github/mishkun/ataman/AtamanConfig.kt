@@ -64,14 +64,14 @@ object AtamanConfig {
         parsedBindings = values
     }
 
-    fun getKeyStroke(project: Project?, char: Char) = KeyStroke.getKeyStrokeForEvent(
-        // Ugly hack to get KEY_REALEASED keystroke
+    private fun getKeyStroke(project: Project?, char: Char): KeyStroke = KeyStroke.getKeyStrokeForEvent(
+        // Ugly hack to get KEY_RELEASED keystroke
         KeyEvent(
             WindowManager.getInstance().getFrame(project),
             KeyEvent.KEY_RELEASED,
             0,
             if (char.isUpperCase()) KeyEvent.SHIFT_DOWN_MASK else 0,
-            KeyEvent.getExtendedKeyCodeForChar(char.toInt()),
+            KeyEvent.getExtendedKeyCodeForChar(char.code),
             char,
         )
     )
@@ -106,7 +106,12 @@ object AtamanConfig {
             val description = bodyObject[DESCRIPTION_KEYWORD] as String
             when {
                 body.containsKey(ACTION_ID_KEYWORD) -> {
-                    val actionId = body[ACTION_ID_KEYWORD] as String
+                    val kw = body[ACTION_ID_KEYWORD]
+                    val actionId = if (kw is String) {
+                        listOf(kw)
+                    } else {
+                        kw as List<String>
+                    }
                     LeaderBinding.SingleBinding(getKeyStroke(project, key), key, description, actionId)
                 }
                 body.containsKey(BINDINGS_KEYWORD) -> {
@@ -116,7 +121,7 @@ object AtamanConfig {
                 }
                 else -> null
             }
-        }.sortedByDescending { it.char }.sortedBy { it.char.toLowerCase() }
+        }.sortedByDescending { it.char }.sortedBy { it.char.lowercaseChar() }
     }
 
     fun findOrCreateRcFile(): File? {

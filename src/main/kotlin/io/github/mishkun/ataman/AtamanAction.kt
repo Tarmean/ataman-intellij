@@ -1,15 +1,11 @@
 package io.github.mishkun.ataman
 
 import com.intellij.icons.AllIcons
-import com.intellij.notification.Notification
-import com.intellij.notification.NotificationListener
-import com.intellij.notification.NotificationType
-import com.intellij.notification.Notifications
+import com.intellij.notification.*
 import com.intellij.openapi.actionSystem.*
-import com.intellij.openapi.actionSystem.ex.ActionManagerEx
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -60,6 +56,10 @@ class TransparentLeaderAction : DumbAwareAction() {
 
     private val delegateAction = LeaderAction()
 
+    override fun getActionUpdateThread(): ActionUpdateThread {
+        return ActionUpdateThread.EDT
+    }
+
     override fun update(e: AnActionEvent) {
         super.update(e)
         val focusOwner = getCurrentFocus() ?: kotlin.run {
@@ -94,26 +94,20 @@ class TransparentLeaderAction : DumbAwareAction() {
 class LeaderAction : DumbAwareAction() {
 
     private fun getActiveJFrame(project: Project): JFrame? {
-        return null
         val frames = Frame.getFrames()
-        return frames.asSequence()
+        val first= frames.asSequence()
           .filter{it is IdeFrame && it.project == project && it.isActive}
           .firstOrNull()
-          ?.let{candidate ->
-            var cur = candidate.parent
-            var limit = 10
-            while (cur != null && limit >= 0) {
-                if (cur is JFrame) {
-                    return cur
-                }
-                limit -=1
-                cur = cur.parent
-            }
-            return null
+        if (first is JFrame) {
+            return first
         }
+        return null
     }
     override fun actionPerformed(event: AnActionEvent) {
-        val frame = event.project?.let{getActiveJFrame(it)} ?: WindowManager.getInstance().getFrame(event.project)!!
+        val localFrame = event.project?.let{getActiveJFrame(it)}
+        val projFrame = WindowManager.getInstance().getFrame(event.project)!!
+
+        val frame = localFrame ?: projFrame
         val point = RelativePoint.getCenterOf(frame.rootPane)
         LeaderPopup(
             event.project, LeaderListStep(
@@ -137,8 +131,10 @@ class LeaderListStep(title: String? = null, val dataContext: DataContext, values
         when (selectedValue) {
             is LeaderBinding.SingleBinding -> {
                 doFinalStep {
-                    val action = ActionManager.getInstance().getAction(selectedValue.action)
-                    executeAction(action, dataContext)
+                    for (actionId in selectedValue.actions) {
+                        val action = ActionManager.getInstance().getAction(actionId)
+                        executeAction(action, dataContext)
+                    }
                 }
             }
             is LeaderBinding.GroupBinding -> LeaderListStep(null, dataContext, selectedValue.bindings)
@@ -148,13 +144,12 @@ class LeaderListStep(title: String? = null, val dataContext: DataContext, values
     override fun getBackgroundFor(value: LeaderBinding?) = UIUtil.getPanelBackground()
 
     private fun executeAction(action: AnAction, context: DataContext): Boolean {
-        var logger = Logger.getInstance(this.javaClass)
-        logger.warn("executeAction: ${action.javaClass}")
+
         val event = AnActionEvent(
-            null, context, ActionPlaces.KEYBOARD_SHORTCUT, action.templatePresentation,
+            null, context, ActionPlaces.KEYBOARD_SHORTCUT, action.templatePresentation.clone(),
             ActionManager.getInstance(), 0
         )
-        if (action is ActionGroup && !action.canBePerformed(context)) {
+        if (action is ActionGroup && event.presentation.isPerformGroup()) {
             // Some ActionGroups should not be performed, but shown as a popup
             val popup = JBPopupFactory.getInstance()
                 .createActionGroupPopup(event.presentation.text, action, context, false, null, -1)
@@ -173,15 +168,7 @@ class LeaderListStep(title: String? = null, val dataContext: DataContext, values
             //   because rider use async update method. See VIM-1819.
             action.beforeActionPerformedUpdate(event)
             if (event.presentation.isEnabled) {
-                // Executing listeners for action. I can't be sure that this code is absolutely correct,
-                //   action execution process in IJ seems to be more complicated.
-                val actionManager = ActionManagerEx.getInstanceEx()
-                // [VERSION UPDATE] 212+
-                actionManager.fireBeforeActionPerformed(action, event.dataContext, event)
-                action.actionPerformed(event)
-
-                // [VERSION UPDATE] 212+
-                actionManager.fireAfterActionPerformed(action, event.dataContext, event)
+                ActionUtil.performActionDumbAwareWithCallbacks(action, event)
                 return true
             }
         }

@@ -25,7 +25,7 @@ repositories {
 }
 
 group = "io.github.mishkun"
-version = "1.1.0"
+version = "1.1.2"
 
 kotlin {
     jvmToolchain(17)
