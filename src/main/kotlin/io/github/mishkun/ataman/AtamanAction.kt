@@ -9,11 +9,13 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.ui.popup.PopupStep
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep
+import com.intellij.openapi.wm.IdeFrame
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.popup.WizardPopup
@@ -23,6 +25,7 @@ import com.intellij.util.ui.EmptyIcon
 import com.intellij.util.ui.GridBag
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import java.awt.Frame
 import java.awt.GridBagLayout
 import java.awt.KeyboardFocusManager
 import java.awt.event.ActionEvent
@@ -90,8 +93,27 @@ class TransparentLeaderAction : DumbAwareAction() {
 
 class LeaderAction : DumbAwareAction() {
 
+    private fun getActiveJFrame(project: Project): JFrame? {
+        return null
+        val frames = Frame.getFrames()
+        return frames.asSequence()
+          .filter{it is IdeFrame && it.project == project && it.isActive}
+          .firstOrNull()
+          ?.let{candidate ->
+            var cur = candidate.parent
+            var limit = 10
+            while (cur != null && limit >= 0) {
+                if (cur is JFrame) {
+                    return cur
+                }
+                limit -=1
+                cur = cur.parent
+            }
+            return null
+        }
+    }
     override fun actionPerformed(event: AnActionEvent) {
-        val frame = WindowManager.getInstance().getFrame(event.project)!!
+        val frame = event.project?.let{getActiveJFrame(it)} ?: WindowManager.getInstance().getFrame(event.project)!!
         val point = RelativePoint.getCenterOf(frame.rootPane)
         LeaderPopup(
             event.project, LeaderListStep(
@@ -126,6 +148,8 @@ class LeaderListStep(title: String? = null, val dataContext: DataContext, values
     override fun getBackgroundFor(value: LeaderBinding?) = UIUtil.getPanelBackground()
 
     private fun executeAction(action: AnAction, context: DataContext): Boolean {
+        var logger = Logger.getInstance(this.javaClass)
+        logger.warn("executeAction: ${action.javaClass}")
         val event = AnActionEvent(
             null, context, ActionPlaces.KEYBOARD_SHORTCUT, action.templatePresentation,
             ActionManager.getInstance(), 0

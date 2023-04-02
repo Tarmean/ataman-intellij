@@ -28,7 +28,6 @@ class ReloadAtamanConfigAction : DumbAwareAction() {
 }
 
 class OpenAtamanConfigAction : DumbAwareAction() {
-
     override fun actionPerformed(e: AnActionEvent) {
         val eventProject = e.project
         if (eventProject != null) {
